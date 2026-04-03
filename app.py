@@ -11,7 +11,8 @@ import os
 try:
     import cv2
     from ultralytics import YOLO
-    model = YOLO("yolov8n.pt")
+    # ⚠️ Disable heavy model in deployment
+    model = None
 except:
     model = None
 
@@ -30,9 +31,6 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
-
-latest_frame = None
-vehicle_detected = False
 
 # -------- DATABASE -------- #
 
@@ -67,18 +65,14 @@ class VehicleLog(db.Model):
 with app.app_context():
     db.create_all()
 
-# -------- AI DETECTION (SAFE) -------- #
+# -------- BACKGROUND TASK -------- #
 
 def ai_detection():
-    global latest_frame, vehicle_detected
-
     if model is None:
         return
-
     while True:
         time.sleep(2)
 
-# 🔥 SAFE THREAD START (IMPORTANT FIX)
 def start_background_thread():
     thread = threading.Thread(target=ai_detection, daemon=True)
     thread.start()
@@ -303,12 +297,9 @@ def admin_logs():
     logs = VehicleLog.query.order_by(VehicleLog.detected_at.desc()).all()
     return render_template('admin_logs.html', logs=logs)
 
-# -------- START THREAD SAFELY -------- #
-
-start_background_thread()
-
-# -------- RUN -------- #
+# -------- RUN (LOCAL ONLY) -------- #
 
 if __name__ == "__main__":
+    start_background_thread()
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
