@@ -1,25 +1,32 @@
-from flask import Flask, render_template, request, redirect, session, jsonify, flash, Response
+from flask import Flask, render_template, request, redirect, session, flash, Response
 from flask_sqlalchemy import SQLAlchemy
 import qrcode
-import cv2
-import razorpay
-from ultralytics import YOLO
-import time
-import threading
 import uuid
+import threading
+import time
+import os
+
+# OPTIONAL imports (avoid crashing on Render)
+try:
+    import cv2
+    from ultralytics import YOLO
+    model = YOLO("yolov8n.pt")
+except:
+    model = None
+
+try:
+    import razorpay
+    client = razorpay.Client(auth=("rzp_test_xxxxx", "xxxxxxxx"))
+except:
+    client = None
 
 app = Flask(__name__)
 app.secret_key = "secret123"
 
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
 db = SQLAlchemy(app)
-
-# -------- RAZORPAY -------- #
-client = razorpay.Client(auth=("rzp_test_xxxxx", "xxxxxxxx"))
-
-# -------- AI MODEL -------- #
-model = YOLO("yolov8n.pt")
 
 latest_frame = None
 vehicle_detected = False
@@ -52,65 +59,21 @@ class VehicleLog(db.Model):
     slot_id = db.Column(db.Integer)
     detected_at = db.Column(db.DateTime, default=db.func.current_timestamp())
 
-# -------- AI DETECTION -------- #
+# -------- INIT DB (VERY IMPORTANT) -------- #
+
+with app.app_context():
+    db.create_all()
+
+# -------- AI DETECTION (SAFE) -------- #
 
 def ai_detection():
     global latest_frame, vehicle_detected
-    last_state = False
 
-    with app.app_context():
-        while True:
-            if latest_frame is None:
-                time.sleep(1)
-                continue
-
-            frame = latest_frame.copy()
-            results = model(frame, verbose=False)
-
-            detected = False
-            for r in results:
-                for box in r.boxes:
-                    cls = int(box.cls[0])
-                    if cls in [2, 3, 5, 7]:
-                        detected = True
-
-            vehicle_detected = detected
-
-            if detected and not last_state:
-                free_slot = Slot.query.filter_by(status="free").first()
-                if free_slot:
-                    free_slot.status = "booked"
-                    db.session.add(VehicleLog(slot_id=free_slot.id))
-                    db.session.commit()
-
-            last_state = detected
-            time.sleep(2)
-
-# -------- VIDEO STREAM -------- #
-
-def generate_frames():
-    global latest_frame, vehicle_detected
-    cap = cv2.VideoCapture(0)
+    if model is None:
+        return
 
     while True:
-        success, frame = cap.read()
-        if not success:
-            break
-
-        frame = cv2.resize(frame, (320, 240))
-        latest_frame = frame
-
-        text = "Vehicle Detected" if vehicle_detected else "No Vehicle"
-
-        cv2.putText(frame, text, (10, 30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6,
-                    (0, 255, 0), 2)
-
-        _, buffer = cv2.imencode('.jpg', frame)
-        frame = buffer.tobytes()
-
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+        time.sleep(2)
 
 # -------- AUTH -------- #
 
@@ -136,16 +99,19 @@ def register():
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    if request.method == 'POST':
-        user = User.query.filter_by(username=request.form['username']).first()
+    try:
+        if request.method == 'POST':
+            user = User.query.filter_by(username=request.form['username']).first()
 
-        if user and user.password == request.form['password']:
-            session['user_id'] = user.id
-            return redirect('/dashboard')
+            if user and user.password == request.form['password']:
+                session['user_id'] = user.id
+                return redirect('/dashboard')
 
-        flash("Invalid credentials")
+            flash("Invalid credentials")
 
-    return render_template('login.html')
+        return render_template('login.html')
+    except Exception as e:
+        return f"Error: {str(e)}"
 
 @app.route('/logout')
 def logout():
@@ -257,10 +223,6 @@ def location_slots(loc_id):
 
 # -------- PAYMENT + QR -------- #
 
-@app.route('/create_order/<int:slot_id>')
-def create_order(slot_id):
-    return redirect(f'/payment_success/{slot_id}')
-
 @app.route('/payment_success/<int:slot_id>')
 def payment_success(slot_id):
     slot = Slot.query.get(slot_id)
@@ -281,64 +243,8 @@ def payment_success(slot_id):
 
     return redirect('/dashboard')
 
-# -------- QR SCAN -------- #
-
-@app.route('/scan')
-def scan_page():
-    if 'admin' not in session:
-        return redirect('/admin_login')
-    return render_template('scan.html')
-
-@app.route('/scan_qr', methods=['POST'])
-def scan_qr():
-    data = request.form.get('qr_data')
-
-    try:
-        user_id, slot_id = data.split("|")
-
-        booking = Booking.query.filter_by(
-            user_id=int(user_id),
-            slot_id=int(slot_id)
-        ).first()
-
-        if booking:
-            return render_template("scan_result.html",
-                                   status="success",
-                                   message="Valid booking confirmed")
-        else:
-            return render_template("scan_result.html",
-                                   status="error",
-                                   message="Invalid QR")
-
-    except:
-        return render_template("scan_result.html",
-                               status="error",
-                               message="QR processing failed")
-
-# -------- VIDEO -------- #
-
-@app.route('/admin_detect')
-def admin_detect():
-    return render_template('admin_detect.html')
-
-@app.route('/video_feed')
-def video_feed():
-    return Response(generate_frames(),
-                    mimetype='multipart/x-mixed-replace; boundary=frame')
-
-# -------- LOGS -------- #
-
-@app.route('/admin_logs')
-def admin_logs():
-    logs = VehicleLog.query.order_by(VehicleLog.detected_at.desc()).all()
-    return render_template('admin_logs.html', logs=logs)
-
 # -------- MAIN -------- #
 
 if __name__ == "__main__":
-    with app.app_context():
-        db.create_all()
-
     threading.Thread(target=ai_detection, daemon=True).start()
-
     app.run(host="0.0.0.0", port=10000)
