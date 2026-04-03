@@ -12,6 +12,7 @@ app = Flask(__name__)
 app.secret_key = "secret123"
 
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
 # -------- RAZORPAY -------- #
@@ -70,7 +71,7 @@ def ai_detection():
             for r in results:
                 for box in r.boxes:
                     cls = int(box.cls[0])
-                    if cls in [2,3,5,7]:
+                    if cls in [2, 3, 5, 7]:
                         detected = True
 
             vehicle_detected = detected
@@ -96,14 +97,14 @@ def generate_frames():
         if not success:
             break
 
-        frame = cv2.resize(frame, (320,240))
+        frame = cv2.resize(frame, (320, 240))
         latest_frame = frame
 
         text = "Vehicle Detected" if vehicle_detected else "No Vehicle"
 
-        cv2.putText(frame, text, (10,30),
+        cv2.putText(frame, text, (10, 30),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6,
-                    (0,255,0), 2)
+                    (0, 255, 0), 2)
 
         _, buffer = cv2.imencode('.jpg', frame)
         frame = buffer.tobytes()
@@ -117,7 +118,7 @@ def generate_frames():
 def home():
     return redirect('/login')
 
-@app.route('/register', methods=['GET','POST'])
+@app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
         if User.query.filter_by(username=request.form['username']).first():
@@ -133,7 +134,7 @@ def register():
 
     return render_template('register.html')
 
-@app.route('/login', methods=['GET','POST'])
+@app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
         user = User.query.filter_by(username=request.form['username']).first()
@@ -176,20 +177,18 @@ def dashboard():
                            username=user.username,
                            locations=locations)
 
-# -------- ADMIN LOGIN -------- #
+# -------- ADMIN -------- #
 
-@app.route('/admin_login', methods=['GET','POST'])
+@app.route('/admin_login', methods=['GET', 'POST'])
 def admin_login():
     if request.method == 'POST':
-        if request.form['username']=="projectsai" and request.form['password']=="teamproject":
+        if request.form['username'] == "projectsai" and request.form['password'] == "teamproject":
             session['admin'] = True
             return redirect('/admin')
 
         flash("Invalid Admin Credentials")
 
     return render_template('admin_login.html')
-
-# -------- ADMIN PANEL -------- #
 
 @app.route('/admin')
 def admin():
@@ -211,7 +210,7 @@ def admin():
 
 # -------- ADD LOCATION -------- #
 
-@app.route('/add_location', methods=['GET','POST'])
+@app.route('/add_location', methods=['GET', 'POST'])
 def add_location():
     if 'admin' not in session:
         return redirect('/admin_login')
@@ -230,7 +229,7 @@ def add_location():
 
 # -------- ADD SLOTS -------- #
 
-@app.route('/add_slots/<int:location_id>', methods=['GET','POST'])
+@app.route('/add_slots/<int:location_id>', methods=['GET', 'POST'])
 def add_slots(location_id):
     if 'admin' not in session:
         return redirect('/admin_login')
@@ -282,15 +281,13 @@ def payment_success(slot_id):
 
     return redirect('/dashboard')
 
-# -------- QR SCAN PAGE (FIXED) -------- #
+# -------- QR SCAN -------- #
 
 @app.route('/scan')
 def scan_page():
     if 'admin' not in session:
         return redirect('/admin_login')
     return render_template('scan.html')
-
-# -------- QR PROCESS -------- #
 
 @app.route('/scan_qr', methods=['POST'])
 def scan_qr():
@@ -313,8 +310,7 @@ def scan_qr():
                                    status="error",
                                    message="Invalid QR")
 
-    except Exception as e:
-        print(e)
+    except:
         return render_template("scan_result.html",
                                status="error",
                                message="QR processing failed")
@@ -345,5 +341,4 @@ if __name__ == "__main__":
 
     threading.Thread(target=ai_detection, daemon=True).start()
 
-   if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
