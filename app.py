@@ -67,7 +67,7 @@ class VehicleLog(db.Model):
 with app.app_context():
     db.create_all()
 
-# -------- AI DETECTION (SAFE FOR RENDER) -------- #
+# -------- AI DETECTION (SAFE) -------- #
 
 def ai_detection():
     global latest_frame, vehicle_detected
@@ -78,8 +78,10 @@ def ai_detection():
     while True:
         time.sleep(2)
 
-# 🔥 START THREAD OUTSIDE MAIN (IMPORTANT FOR GUNICORN)
-threading.Thread(target=ai_detection, daemon=True).start()
+# 🔥 SAFE THREAD START (IMPORTANT FIX)
+def start_background_thread():
+    thread = threading.Thread(target=ai_detection, daemon=True)
+    thread.start()
 
 # -------- AUTH -------- #
 
@@ -227,7 +229,7 @@ def location_slots(loc_id):
     slots = Slot.query.filter_by(location_id=loc_id).all()
     return render_template('location_slots.html', slots=slots)
 
-# -------- PAYMENT + QR -------- #
+# -------- QR PAYMENT -------- #
 
 @app.route('/payment_success/<int:slot_id>')
 def payment_success(slot_id):
@@ -252,15 +254,46 @@ def payment_success(slot_id):
 
     return redirect('/dashboard')
 
-# -------- ADMIN DETECTION -------- #
+# -------- QR SCAN -------- #
+
+@app.route('/scan')
+def scan_page():
+    if 'admin' not in session:
+        return redirect('/admin_login')
+    return render_template('scan.html')
+
+@app.route('/scan_qr', methods=['POST'])
+def scan_qr():
+    try:
+        data = request.form.get('qr_data')
+        user_id, slot_id = data.split("|")
+
+        booking = Booking.query.filter_by(
+            user_id=int(user_id),
+            slot_id=int(slot_id)
+        ).first()
+
+        if booking:
+            return render_template("scan_result.html",
+                                   status="success",
+                                   message="Valid booking")
+        else:
+            return render_template("scan_result.html",
+                                   status="error",
+                                   message="Invalid QR")
+
+    except:
+        return render_template("scan_result.html",
+                               status="error",
+                               message="QR failed")
+
+# -------- ADMIN FEATURES -------- #
 
 @app.route('/admin_detect')
 def admin_detect():
     if 'admin' not in session:
         return redirect('/admin_login')
     return render_template('admin_detect.html')
-
-# -------- ADMIN LOGS -------- #
 
 @app.route('/admin_logs')
 def admin_logs():
@@ -270,15 +303,11 @@ def admin_logs():
     logs = VehicleLog.query.order_by(VehicleLog.detected_at.desc()).all()
     return render_template('admin_logs.html', logs=logs)
 
-# -------- QR SCAN -------- #
+# -------- START THREAD SAFELY -------- #
 
-@app.route('/scan')
-def scan_page():
-    if 'admin' not in session:
-        return redirect('/admin_login')
-    return render_template('scan.html')
+start_background_thread()
 
-# -------- RUN (ONLY FOR LOCAL) -------- #
+# -------- RUN -------- #
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
