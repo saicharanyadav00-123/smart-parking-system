@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Payment</title>
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+</head>
+
+<body>
+
+<h2 style="text-align:center;">Pay for Slot {{slot_id}}</h2>
+
+<div style="text-align:center; margin-top:40px;">
+
+    <button id="pay-btn">Pay with Razorpay</button>
+
+    <br><br>
+
+    <!-- BACKUP -->
+    <a href="/confirm_payment/{{slot_id}}">
+        <button>Demo Payment</button>
+    </a>
+
+</div>
+
+<script>
+var options = {
+    "key": "rzp_test_xxxxx",
+    "amount": "{{order['amount']}}",
+    "currency": "INR",
+    "name": "Smart Parking",
+    "description": "Slot Booking",
+    "order_id": "{{order['id']}}",
+
+    "handler": function (response){
+        window.location.href = "/confirm_payment/{{slot_id}}";
+    }
+};
+
+var rzp = new Razorpay(options);
+
+document.getElementById('pay-btn').onclick = function(e){
+    rzp.open();
+    e.preventDefault();
+}
+</script>
+
+</body>
+</html>

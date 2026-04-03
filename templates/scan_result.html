@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Scan Result</title>
+
+    <style>
+        body {
+            background: linear-gradient(to right, #0f172a, #1e293b, #065f46);
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: Arial;
+        }
+
+        .card {
+            padding: 40px;
+            border-radius: 20px;
+            text-align: center;
+            width: 300px;
+        }
+
+        .success {
+            border: 2px solid #22c55e;
+            box-shadow: 0 0 20px #22c55e;
+        }
+
+        .error {
+            border: 2px solid #ef4444;
+            box-shadow: 0 0 20px #ef4444;
+        }
+
+        .btn {
+            margin-top: 20px;
+            padding: 10px;
+            background: #22c55e;
+            color: white;
+            border-radius: 8px;
+            text-decoration: none;
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="card {{status}}">
+    <h2>
+        {% if status == "success" %}
+            ✔ Access Granted
+        {% else %}
+            ❌ Access Denied
+        {% endif %}
+    </h2>
+
+    <p>{{message}}</p>
+
+    <a href="/admin" class="btn">Back</a>
+</div>
+
+</body>
+</html>

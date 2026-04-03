@@ -1,0 +1,349 @@
+from flask import Flask, render_template, request, redirect, session, jsonify, flash, Response
+from flask_sqlalchemy import SQLAlchemy
+import qrcode
+import cv2
+import razorpay
+from ultralytics import YOLO
+import time
+import threading
+import uuid
+
+app = Flask(__name__)
+app.secret_key = "secret123"
+
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
+db = SQLAlchemy(app)
+
+# -------- RAZORPAY -------- #
+client = razorpay.Client(auth=("rzp_test_xxxxx", "xxxxxxxx"))
+
+# -------- AI MODEL -------- #
+model = YOLO("yolov8n.pt")
+
+latest_frame = None
+vehicle_detected = False
+
+# -------- DATABASE -------- #
+
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(100), unique=True)
+    password = db.Column(db.String(100))
+
+class Location(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100))
+    latitude = db.Column(db.Float)
+    longitude = db.Column(db.Float)
+
+class Slot(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    status = db.Column(db.String(20), default="free")
+    location_id = db.Column(db.Integer, db.ForeignKey('location.id'))
+
+class Booking(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer)
+    slot_id = db.Column(db.Integer)
+
+class VehicleLog(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    slot_id = db.Column(db.Integer)
+    detected_at = db.Column(db.DateTime, default=db.func.current_timestamp())
+
+# -------- AI DETECTION -------- #
+
+def ai_detection():
+    global latest_frame, vehicle_detected
+    last_state = False
+
+    with app.app_context():
+        while True:
+            if latest_frame is None:
+                time.sleep(1)
+                continue
+
+            frame = latest_frame.copy()
+            results = model(frame, verbose=False)
+
+            detected = False
+            for r in results:
+                for box in r.boxes:
+                    cls = int(box.cls[0])
+                    if cls in [2,3,5,7]:
+                        detected = True
+
+            vehicle_detected = detected
+
+            if detected and not last_state:
+                free_slot = Slot.query.filter_by(status="free").first()
+                if free_slot:
+                    free_slot.status = "booked"
+                    db.session.add(VehicleLog(slot_id=free_slot.id))
+                    db.session.commit()
+
+            last_state = detected
+            time.sleep(2)
+
+# -------- VIDEO STREAM -------- #
+
+def generate_frames():
+    global latest_frame, vehicle_detected
+    cap = cv2.VideoCapture(0)
+
+    while True:
+        success, frame = cap.read()
+        if not success:
+            break
+
+        frame = cv2.resize(frame, (320,240))
+        latest_frame = frame
+
+        text = "Vehicle Detected" if vehicle_detected else "No Vehicle"
+
+        cv2.putText(frame, text, (10,30),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                    (0,255,0), 2)
+
+        _, buffer = cv2.imencode('.jpg', frame)
+        frame = buffer.tobytes()
+
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+
+# -------- AUTH -------- #
+
+@app.route('/')
+def home():
+    return redirect('/login')
+
+@app.route('/register', methods=['GET','POST'])
+def register():
+    if request.method == 'POST':
+        if User.query.filter_by(username=request.form['username']).first():
+            flash("User already exists!")
+            return redirect('/register')
+
+        db.session.add(User(
+            username=request.form['username'],
+            password=request.form['password']
+        ))
+        db.session.commit()
+        return redirect('/login')
+
+    return render_template('register.html')
+
+@app.route('/login', methods=['GET','POST'])
+def login():
+    if request.method == 'POST':
+        user = User.query.filter_by(username=request.form['username']).first()
+
+        if user and user.password == request.form['password']:
+            session['user_id'] = user.id
+            return redirect('/dashboard')
+
+        flash("Invalid credentials")
+
+    return render_template('login.html')
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect('/login')
+
+# -------- DASHBOARD -------- #
+
+@app.route('/dashboard')
+def dashboard():
+    if 'user_id' not in session:
+        return redirect('/login')
+
+    user = User.query.get(session['user_id'])
+
+    locations = []
+    for loc in Location.query.all():
+        total = Slot.query.filter_by(location_id=loc.id).count()
+        free = Slot.query.filter_by(location_id=loc.id, status="free").count()
+
+        locations.append({
+            "id": loc.id,
+            "name": loc.name,
+            "total": total,
+            "free": free
+        })
+
+    return render_template('dashboard.html',
+                           username=user.username,
+                           locations=locations)
+
+# -------- ADMIN LOGIN -------- #
+
+@app.route('/admin_login', methods=['GET','POST'])
+def admin_login():
+    if request.method == 'POST':
+        if request.form['username']=="projectsai" and request.form['password']=="teamproject":
+            session['admin'] = True
+            return redirect('/admin')
+
+        flash("Invalid Admin Credentials")
+
+    return render_template('admin_login.html')
+
+# -------- ADMIN PANEL -------- #
+
+@app.route('/admin')
+def admin():
+    if 'admin' not in session:
+        return redirect('/admin_login')
+
+    locations = []
+    for loc in Location.query.all():
+        total = Slot.query.filter_by(location_id=loc.id).count()
+        free = Slot.query.filter_by(location_id=loc.id, status="free").count()
+
+        locations.append({
+            "name": loc.name,
+            "total": total,
+            "free": free
+        })
+
+    return render_template('admin.html', locations=locations)
+
+# -------- ADD LOCATION -------- #
+
+@app.route('/add_location', methods=['GET','POST'])
+def add_location():
+    if 'admin' not in session:
+        return redirect('/admin_login')
+
+    if request.method == 'POST':
+        loc = Location(
+            name=request.form['name'],
+            latitude=float(request.form['latitude']),
+            longitude=float(request.form['longitude'])
+        )
+        db.session.add(loc)
+        db.session.commit()
+        return redirect(f'/add_slots/{loc.id}')
+
+    return render_template('add_location.html')
+
+# -------- ADD SLOTS -------- #
+
+@app.route('/add_slots/<int:location_id>', methods=['GET','POST'])
+def add_slots(location_id):
+    if 'admin' not in session:
+        return redirect('/admin_login')
+
+    if request.method == 'POST':
+        count = int(request.form['slots'])
+
+        for _ in range(count):
+            db.session.add(Slot(location_id=location_id))
+
+        db.session.commit()
+        return redirect('/admin')
+
+    return render_template('add_slots.html')
+
+# -------- VIEW SLOTS -------- #
+
+@app.route('/location_slots/<int:loc_id>')
+def location_slots(loc_id):
+    if 'user_id' not in session:
+        return redirect('/login')
+
+    slots = Slot.query.filter_by(location_id=loc_id).all()
+    return render_template('location_slots.html', slots=slots)
+
+# -------- PAYMENT + QR -------- #
+
+@app.route('/create_order/<int:slot_id>')
+def create_order(slot_id):
+    return redirect(f'/payment_success/{slot_id}')
+
+@app.route('/payment_success/<int:slot_id>')
+def payment_success(slot_id):
+    slot = Slot.query.get(slot_id)
+
+    if slot and slot.status == "free":
+        slot.status = "booked"
+
+        db.session.add(Booking(user_id=session['user_id'], slot_id=slot_id))
+        db.session.commit()
+
+        qr_data = f"{session['user_id']}|{slot_id}"
+        img = qrcode.make(qr_data)
+
+        filename = f"qr_{uuid.uuid4()}.png"
+        img.save(f"static/{filename}")
+
+        return render_template("qr.html", qr=filename)
+
+    return redirect('/dashboard')
+
+# -------- QR SCAN PAGE (FIXED) -------- #
+
+@app.route('/scan')
+def scan_page():
+    if 'admin' not in session:
+        return redirect('/admin_login')
+    return render_template('scan.html')
+
+# -------- QR PROCESS -------- #
+
+@app.route('/scan_qr', methods=['POST'])
+def scan_qr():
+    data = request.form.get('qr_data')
+
+    try:
+        user_id, slot_id = data.split("|")
+
+        booking = Booking.query.filter_by(
+            user_id=int(user_id),
+            slot_id=int(slot_id)
+        ).first()
+
+        if booking:
+            return render_template("scan_result.html",
+                                   status="success",
+                                   message="Valid booking confirmed")
+        else:
+            return render_template("scan_result.html",
+                                   status="error",
+                                   message="Invalid QR")
+
+    except Exception as e:
+        print(e)
+        return render_template("scan_result.html",
+                               status="error",
+                               message="QR processing failed")
+
+# -------- VIDEO -------- #
+
+@app.route('/admin_detect')
+def admin_detect():
+    return render_template('admin_detect.html')
+
+@app.route('/video_feed')
+def video_feed():
+    return Response(generate_frames(),
+                    mimetype='multipart/x-mixed-replace; boundary=frame')
+
+# -------- LOGS -------- #
+
+@app.route('/admin_logs')
+def admin_logs():
+    logs = VehicleLog.query.order_by(VehicleLog.detected_at.desc()).all()
+    return render_template('admin_logs.html', logs=logs)
+
+# -------- MAIN -------- #
+
+if __name__ == "__main__":
+    with app.app_context():
+        db.create_all()
+
+    threading.Thread(target=ai_detection, daemon=True).start()
+
+   if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=10000)

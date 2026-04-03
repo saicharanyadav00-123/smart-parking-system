@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Live Detection</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+
+<div class="navbar">
+    <h3>Live Detection</h3>
+    <a href="/admin">Back</a>
+</div>
+
+<h2 style="text-align:center; margin-top:20px;">Live Vehicle Detection</h2>
+
+<div style="text-align:center; margin-top:30px;">
+    <img src="{{ url_for('video_feed') }}" width="500">
+</div>
+
+</body>
+</html>

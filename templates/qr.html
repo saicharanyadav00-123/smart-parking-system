@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Scan QR</title>
+</head>
+<body>
+
+<h2 style="text-align:center;">QR Scanner</h2>
+
+<div style="text-align:center;">
+    <video id="video" width="300" height="200" autoplay></video>
+    <br><br>
+    <button onclick="startScan()">Start Scan</button>
+</div>
+
+<form id="qrForm" method="POST" action="/scan_qr">
+    <input type="hidden" name="qr_data" id="qr_data">
+</form>
+
+<script src="https://unpkg.com/html5-qrcode"></script>
+
+<script>
+function startScan(){
+    const scanner = new Html5Qrcode("video");
+
+    scanner.start(
+        { facingMode: "environment" },
+        {
+            fps: 10,
+            qrbox: 250
+        },
+        qrCodeMessage => {
+            document.getElementById("qr_data").value = qrCodeMessage;
+            document.getElementById("qrForm").submit();
+        }
+    );
+}
+</script>
+
+</body>
+</html>

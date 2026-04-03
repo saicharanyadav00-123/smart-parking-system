@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+
+<!-- 🔥 CLEAN USER NAVBAR -->
+<div class="navbar">
+    <h3>Smart Parking</h3>
+    <div>
+        <a href="/dashboard">Home</a>
+        <a href="/logout">Logout</a>
+    </div>
+</div>
+
+<div class="hero">
+    <div class="car-container">
+        <img src="{{ url_for('static', filename='car.png') }}" class="car-img">
+    </div>
+
+    <h1>Welcome, {{username}} 👋</h1>
+    <p>Find & Book Parking Instantly</p>
+</div>
+
+<h2 style="text-align:center; margin-top:30px;">Available Locations</h2>
+
+<div class="slots">
+
+{% for loc in locations %}
+    <div class="slot-card free">
+
+        <h3>{{loc.name}}</h3>
+
+        <p style="color:#22c55e;">
+            Free: {{loc.free}} / {{loc.total}}
+        </p>
+
+        <a href="/location_slots/{{loc.id}}" class="book-btn">
+            View Slots
+        </a>
+
+    </div>
+{% endfor %}
+
+</div>
+
+</body>
+</html>

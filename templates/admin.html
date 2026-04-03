@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Admin Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+
+<!-- 🔥 CLEAN ADMIN NAVBAR -->
+<div class="navbar">
+    <h3>Admin Panel</h3>
+    <div>
+        <a href="/logout">Logout</a>
+    </div>
+</div>
+
+<h2 style="text-align:center; margin-top:30px;">Manage Parking Locations</h2>
+
+<!-- 🔥 ACTION BUTTONS -->
+<div class="admin-actions">
+
+    <a href="/add_location" class="admin-btn">Add Location</a>
+    <a href="/admin_detect" class="admin-btn">Start Detection</a>
+    <a href="/admin_logs" class="admin-btn">View Logs</a>
+    <a href="/scan" class="admin-btn">Scan QR</a>
+
+</div>
+
+<!-- 🔥 LOCATION CARDS -->
+<div class="slots">
+
+{% for loc in locations %}
+    <div class="slot-card free">
+
+        <h3>{{loc.name}}</h3>
+
+        <p style="color:#22c55e;">
+            Free: {{loc.free}} / {{loc.total}}
+        </p>
+
+    </div>
+{% endfor %}
+
+</div>
+
+</body>
+</html>

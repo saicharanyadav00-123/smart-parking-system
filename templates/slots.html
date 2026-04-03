@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Parking Slots</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+
+<div class="navbar">
+    <h3>Smart Parking</h3>
+    <div>
+        <a href="/dashboard">Home</a>
+        <a href="/logout">Logout</a>
+    </div>
+</div>
+
+<h2 style="text-align:center; margin-top:30px;">Live Parking Slots</h2>
+
+<div id="loading">
+    <div class="loader"></div>
+    <p class="loading-text">Loading slots...</p>
+</div>
+
+<div class="slots" id="slots-container" style="display:none;"></div>
+
+<script>
+function loadSlots() {
+    fetch('/get_slots')
+    .then(res => res.json())
+    .then(data => {
+
+        let html = "";
+
+        data.forEach(slot => {
+            html += `
+            <div class="slot-card ${slot.status}">
+                <h3>Slot ${slot.id}</h3>
+
+                <span class="badge ${slot.status}">
+                    ${slot.status.toUpperCase()}
+                </span>
+
+                <br><br>
+
+                ${slot.status === "free"
+                    ? `<a href="/create_order/${slot.id}" class="book-btn">Book Now</a>`
+                    : `<p>Occupied</p>`}
+            </div>
+            `;
+        });
+
+        document.getElementById("loading").style.display = "none";
+        document.getElementById("slots-container").style.display = "grid";
+        document.getElementById("slots-container").innerHTML = html;
+    });
+}
+
+setInterval(loadSlots, 3000);
+loadSlots();
+</script>
+
+</body>
+</html>

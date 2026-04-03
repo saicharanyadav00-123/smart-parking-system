@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Locations</title>
+</head>
+
+<body style="text-align:center;">
+
+<h2>Select Parking Location</h2>
+
+{% for loc in locations %}
+    <div style="margin:20px;">
+        <h3>{{loc.name}}</h3>
+
+        <a href="/location_slots/{{loc.id}}">
+            <button>View Slots</button>
+        </a>
+    </div>
+{% endfor %}
+
+</body>
+</html>

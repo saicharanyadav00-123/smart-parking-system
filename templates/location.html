@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Find Parking Near Me</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+
+<div class="navbar">
+    <h3>Smart Parking</h3>
+    <a href="/dashboard">Home</a>
+</div>
+
+<h2 style="text-align:center; margin-top:30px;">Find Nearby Parking</h2>
+
+<div style="text-align:center; margin-top:40px;">
+    <button onclick="getLocation()">Get My Location</button>
+
+    <p id="location"></p>
+</div>
+
+<script>
+function getLocation() {
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(showPosition);
+    } else {
+        alert("Geolocation not supported");
+    }
+}
+
+function showPosition(position) {
+    let lat = position.coords.latitude;
+    let lon = position.coords.longitude;
+
+    document.getElementById("location").innerHTML =
+        "Latitude: " + lat + "<br>Longitude: " + lon;
+}
+</script>
+
+</body>
+</html>

@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Detection Logs</title>
+</head>
+<body>
+
+<h2 style="text-align:center;">Vehicle Detection Logs</h2>
+
+<table border="1" style="margin:auto;">
+<tr>
+    <th>ID</th>
+    <th>Slot</th>
+    <th>Time</th>
+</tr>
+
+{% for log in logs %}
+<tr>
+    <td>{{log.id}}</td>
+    <td>{{log.slot_id}}</td>
+    <td>{{log.detected_at}}</td>
+</tr>
+{% endfor %}
+
+</table>
+
+</body>
+</html>

@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Payment</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+
+<h2>Payment Page</h2>
+
+<p>Slot {{slot_id}}</p>
+
+<button onclick="window.location.href='/confirm_payment/{{slot_id}}'">
+    Pay Now
+</button>
+
+<br><br>
+<a href="/slots">Cancel</a>
+
+</body>
+</html>

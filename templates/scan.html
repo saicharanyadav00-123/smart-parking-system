@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>QR Scanner</title>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+
+    <style>
+        body {
+            background: linear-gradient(to right, #0f172a, #1e293b, #065f46);
+            color: white;
+            text-align: center;
+            font-family: Arial;
+        }
+
+        #reader {
+            width: 300px;
+            margin: 20px auto;
+            border: 3px solid #22c55e;
+            border-radius: 15px;
+            box-shadow: 0 0 20px #22c55e;
+        }
+
+        button {
+            padding: 10px 20px;
+            margin: 10px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            color: white;
+        }
+
+        .start-btn { background: #22c55e; }
+        .stop-btn { background: #ef4444; }
+
+        .status { margin-top: 15px; }
+    </style>
+</head>
+
+<body>
+
+<h2>Scan QR</h2>
+
+<div id="reader"></div>
+
+<button class="start-btn" onclick="startScanner()">Start</button>
+<button class="stop-btn" onclick="stopScanner()">Stop</button>
+
+<p class="status" id="status">Scanner idle</p>
+
+<!-- 🔥 IMPORTANT FORM -->
+<form id="qrForm" method="POST" action="/scan_qr">
+    <input type="hidden" name="qr_data" id="qr_data">
+</form>
+
+<script>
+let scanner;
+
+function startScanner() {
+    document.getElementById("status").innerText = "Scanning...";
+
+    scanner = new Html5Qrcode("reader");
+
+    scanner.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: 250 },
+        qrCodeMessage => {
+
+            document.getElementById("status").innerText = "Detected ✔";
+
+            document.getElementById("qr_data").value = qrCodeMessage;
+
+            // 🔥 SUBMIT FORM
+            document.getElementById("qrForm").submit();
+        }
+    );
+}
+
+function stopScanner() {
+    if (scanner) {
+        scanner.stop();
+        document.getElementById("status").innerText = "Stopped";
+    }
+}
+</script>
+
+</body>
+</html>
