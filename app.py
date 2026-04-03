@@ -6,7 +6,8 @@ import threading
 import time
 import os
 
-# OPTIONAL imports (avoid crashing on Render)
+# -------- SAFE IMPORTS (IMPORTANT FOR RENDER) -------- #
+
 try:
     import cv2
     from ultralytics import YOLO
@@ -19,6 +20,8 @@ try:
     client = razorpay.Client(auth=("rzp_test_xxxxx", "xxxxxxxx"))
 except:
     client = None
+
+# -------- APP CONFIG -------- #
 
 app = Flask(__name__)
 app.secret_key = "secret123"
@@ -59,7 +62,7 @@ class VehicleLog(db.Model):
     slot_id = db.Column(db.Integer)
     detected_at = db.Column(db.DateTime, default=db.func.current_timestamp())
 
-# -------- INIT DB (VERY IMPORTANT) -------- #
+# -------- INIT DB -------- #
 
 with app.app_context():
     db.create_all()
@@ -225,6 +228,9 @@ def location_slots(loc_id):
 
 @app.route('/payment_success/<int:slot_id>')
 def payment_success(slot_id):
+    if 'user_id' not in session:
+        return redirect('/login')
+
     slot = Slot.query.get(slot_id)
 
     if slot and slot.status == "free":
@@ -242,6 +248,32 @@ def payment_success(slot_id):
         return render_template("qr.html", qr=filename)
 
     return redirect('/dashboard')
+
+# -------- ADMIN DETECTION -------- #
+
+@app.route('/admin_detect')
+def admin_detect():
+    if 'admin' not in session:
+        return redirect('/admin_login')
+    return render_template('admin_detect.html')
+
+# -------- ADMIN LOGS -------- #
+
+@app.route('/admin_logs')
+def admin_logs():
+    if 'admin' not in session:
+        return redirect('/admin_login')
+
+    logs = VehicleLog.query.order_by(VehicleLog.detected_at.desc()).all()
+    return render_template('admin_logs.html', logs=logs)
+
+# -------- QR SCAN -------- #
+
+@app.route('/scan')
+def scan_page():
+    if 'admin' not in session:
+        return redirect('/admin_login')
+    return render_template('scan.html')
 
 # -------- MAIN -------- #
 
