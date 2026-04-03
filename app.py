@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, session, flash, Response
+from flask import Flask, render_template, request, redirect, session, flash
 from flask_sqlalchemy import SQLAlchemy
 import qrcode
 import uuid
@@ -11,8 +11,7 @@ import os
 try:
     import cv2
     from ultralytics import YOLO
-    # ⚠️ Disable heavy model in deployment
-    model = None
+    model = None   # disable in deployment
 except:
     model = None
 
@@ -297,7 +296,7 @@ def admin_logs():
     logs = VehicleLog.query.order_by(VehicleLog.detected_at.desc()).all()
     return render_template('admin_logs.html', logs=logs)
 
-# -------- RUN (LOCAL ONLY) -------- #
+# -------- RUN -------- #
 
 if __name__ == "__main__":
     start_background_thread()
