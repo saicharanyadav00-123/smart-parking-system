@@ -6,7 +6,7 @@ import threading
 import time
 import os
 
-# -------- SAFE IMPORTS (IMPORTANT FOR RENDER) -------- #
+# -------- SAFE IMPORTS -------- #
 
 try:
     import cv2
@@ -67,7 +67,7 @@ class VehicleLog(db.Model):
 with app.app_context():
     db.create_all()
 
-# -------- AI DETECTION (SAFE) -------- #
+# -------- AI DETECTION (SAFE FOR RENDER) -------- #
 
 def ai_detection():
     global latest_frame, vehicle_detected
@@ -77,6 +77,9 @@ def ai_detection():
 
     while True:
         time.sleep(2)
+
+# 🔥 START THREAD OUTSIDE MAIN (IMPORTANT FOR GUNICORN)
+threading.Thread(target=ai_detection, daemon=True).start()
 
 # -------- AUTH -------- #
 
@@ -275,8 +278,8 @@ def scan_page():
         return redirect('/admin_login')
     return render_template('scan.html')
 
-# -------- MAIN -------- #
+# -------- RUN (ONLY FOR LOCAL) -------- #
 
 if __name__ == "__main__":
-    threading.Thread(target=ai_detection, daemon=True).start()
-    app.run(host="0.0.0.0", port=10000)
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
