@@ -1,9 +1,8 @@
 from flask import Flask, render_template, request, redirect, session, flash, jsonify
 from flask_sqlalchemy import SQLAlchemy
-import qrcode
-import uuid
 import requests
 import os
+import base64
 
 app = Flask(__name__)
 app.secret_key = "secret123"
@@ -53,8 +52,23 @@ with app.app_context():
 # -------- ROBOFLOW FUNCTION -------- #
 
 def detect_vehicle_api(image_file):
-    url = f"https://detect.roboflow.com/{WORKSPACE}/{WORKFLOW}?api_key={API_KEY}"
-    response = requests.post(url, files={"file": image_file})
+    url = "https://detect.roboflow.com/infer/workflows"
+
+    image_bytes = image_file.read()
+    image_base64 = base64.b64encode(image_bytes).decode("utf-8")
+
+    response = requests.post(
+        url,
+        params={"api_key": API_KEY},
+        json={
+            "workspace_name": WORKSPACE,
+            "workflow_id": WORKFLOW,
+            "inputs": {
+                "image": image_base64
+            }
+        }
+    )
+
     return response.json()
 
 # -------- HOME -------- #
@@ -72,11 +86,10 @@ def register():
             flash("User already exists!")
             return redirect('/register')
 
-        user = User(
+        db.session.add(User(
             username=request.form['username'],
             password=request.form['password']
-        )
-        db.session.add(user)
+        ))
         db.session.commit()
 
         return redirect('/login')
@@ -133,10 +146,7 @@ def dashboard():
 @app.route('/admin_login', methods=['GET', 'POST'])
 def admin_login():
     if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
-
-        if username == "admin" and password == "admin":
+        if request.form['username'] == "admin" and request.form['password'] == "admin":
             session['admin'] = True
             return redirect('/admin')
 
@@ -144,7 +154,7 @@ def admin_login():
 
     return render_template('admin_login.html')
 
-# -------- ADMIN DASHBOARD -------- #
+# -------- ADMIN -------- #
 
 @app.route('/admin')
 def admin():
@@ -184,7 +194,7 @@ def add_location():
 
     return render_template('add_location.html')
 
-# -------- LIVE DETECTION PAGE -------- #
+# -------- LIVE DETECTION -------- #
 
 @app.route('/live')
 def live():
@@ -193,17 +203,18 @@ def live():
 
     return render_template('admin_detect.html')
 
-# -------- DETECTION API -------- #
+# -------- DETECT VEHICLE -------- #
 
 @app.route('/detect_vehicle', methods=['POST'])
 def detect_vehicle():
-    if 'image' not in request.files:
-        return jsonify({"error": "No image"})
-
     file = request.files['image']
     result = detect_vehicle_api(file)
 
-    predictions = result.get("predictions", [])
+    print(result)
+
+    predictions = []
+    if "outputs" in result:
+        predictions = result["outputs"][0].get("predictions", [])
 
     if len(predictions) > 0:
         slot = Slot.query.filter_by(status="free").first()
@@ -214,6 +225,47 @@ def detect_vehicle():
             db.session.commit()
 
     return jsonify(result)
+
+# -------- ADMIN LOGS -------- #
+
+@app.route('/admin_logs')
+def admin_logs():
+    if 'admin' not in session:
+        return redirect('/admin_login')
+
+    logs = VehicleLog.query.order_by(VehicleLog.detected_at.desc()).all()
+    return render_template('admin_logs.html', logs=logs)
+
+# -------- SCAN PAGE -------- #
+
+@app.route('/scan')
+def scan():
+    if 'admin' not in session:
+        return redirect('/admin_login')
+
+    return render_template('scan.html')
+
+# -------- SCAN QR -------- #
+
+@app.route('/scan_qr', methods=['POST'])
+def scan_qr():
+    data = request.form.get('qr_data')
+
+    try:
+        user_id, slot_id = data.split("|")
+
+        booking = Booking.query.filter_by(
+            user_id=int(user_id),
+            slot_id=int(slot_id)
+        ).first()
+
+        if booking:
+            return render_template("scan_result.html", status="success", message="Valid QR")
+        else:
+            return render_template("scan_result.html", status="error", message="Invalid QR")
+
+    except:
+        return render_template("scan_result.html", status="error", message="QR Error")
 
 # -------- RUN -------- #
 
