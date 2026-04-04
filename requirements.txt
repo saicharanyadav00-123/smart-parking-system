@@ -1,7 +1,7 @@
 flask
 flask_sqlalchemy
 qrcode
-opencv-python-headless
+pillow
 razorpay
 gunicorn
 requests
