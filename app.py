@@ -3,6 +3,8 @@ from flask_sqlalchemy import SQLAlchemy
 import requests
 import os
 import base64
+import qrcode
+import uuid
 
 app = Flask(__name__)
 app.secret_key = "secret123"
@@ -14,7 +16,7 @@ db = SQLAlchemy(app)
 
 # -------- ROBOFLOW CONFIG -------- #
 
-API_KEY = "d8207anxlLptFHy3mCSm"
+API_KEY = "YOUR_API_KEY"
 WORKSPACE = "sais-workspace-5kbq6"
 WORKFLOW = "find-car-motorcycle-vehicles"
 
@@ -49,7 +51,7 @@ class VehicleLog(db.Model):
 with app.app_context():
     db.create_all()
 
-# -------- ROBOFLOW FUNCTION -------- #
+# -------- ROBOFLOW DETECTION -------- #
 
 def detect_vehicle_api(image_file):
     url = "https://detect.roboflow.com/infer/workflows"
@@ -86,10 +88,11 @@ def register():
             flash("User already exists!")
             return redirect('/register')
 
-        db.session.add(User(
+        user = User(
             username=request.form['username'],
             password=request.form['password']
-        ))
+        )
+        db.session.add(user)
         db.session.commit()
 
         return redirect('/login')
@@ -118,7 +121,7 @@ def logout():
     session.clear()
     return redirect('/login')
 
-# -------- DASHBOARD -------- #
+# -------- USER DASHBOARD -------- #
 
 @app.route('/dashboard')
 def dashboard():
@@ -154,7 +157,7 @@ def admin_login():
 
     return render_template('admin_login.html')
 
-# -------- ADMIN -------- #
+# -------- ADMIN DASHBOARD -------- #
 
 @app.route('/admin')
 def admin():
@@ -194,7 +197,7 @@ def add_location():
 
     return render_template('add_location.html')
 
-# -------- LIVE DETECTION -------- #
+# -------- LIVE DETECTION PAGE -------- #
 
 @app.route('/live')
 def live():
@@ -207,10 +210,13 @@ def live():
 
 @app.route('/detect_vehicle', methods=['POST'])
 def detect_vehicle():
+    if 'image' not in request.files:
+        return "No image uploaded"
+
     file = request.files['image']
     result = detect_vehicle_api(file)
 
-    print(result)
+    print("DEBUG:", result)
 
     predictions = []
     if "outputs" in result:
@@ -224,7 +230,7 @@ def detect_vehicle():
             db.session.add(VehicleLog(slot_id=slot.id))
             db.session.commit()
 
-    return jsonify(result)
+    return render_template("admin_detect.html", result=result)
 
 # -------- ADMIN LOGS -------- #
 
