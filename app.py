@@ -102,6 +102,22 @@ def admin():
 
     return render_template('admin.html', locations=locations)
 
+# -------- ADMIN LOGIN -------- #
+
+@app.route('/admin_login', methods=['GET', 'POST'])
+def admin_login():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+
+        if username == "admin" and password == "admin":
+            session['user_id'] = 1
+            return redirect('/admin')
+
+        flash("Invalid Admin Credentials")
+
+    return render_template('admin_login.html')
+
 # -------- ADD LOCATION -------- #
 
 @app.route('/add_location', methods=['GET', 'POST'])
