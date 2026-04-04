@@ -50,19 +50,40 @@ class VehicleLog(db.Model):
 with app.app_context():
     db.create_all()
 
-# -------- ROBOFLOW DETECTION -------- #
+# -------- ROBOFLOW FUNCTION -------- #
 
-def detect_vehicle_api(image_bytes):
+def detect_vehicle_api(image_file):
     url = f"https://detect.roboflow.com/{WORKSPACE}/{WORKFLOW}?api_key={API_KEY}"
-
-    response = requests.post(url, files={"file": image_bytes})
+    response = requests.post(url, files={"file": image_file})
     return response.json()
 
-# -------- AUTH -------- #
+# -------- HOME -------- #
 
 @app.route('/')
 def home():
     return redirect('/login')
+
+# -------- REGISTER -------- #
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        if User.query.filter_by(username=request.form['username']).first():
+            flash("User already exists!")
+            return redirect('/register')
+
+        user = User(
+            username=request.form['username'],
+            password=request.form['password']
+        )
+        db.session.add(user)
+        db.session.commit()
+
+        return redirect('/login')
+
+    return render_template('register.html')
+
+# -------- USER LOGIN -------- #
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -71,23 +92,64 @@ def login():
 
         if user and user.password == request.form['password']:
             session['user_id'] = user.id
-            return redirect('/admin')
+            return redirect('/dashboard')
 
         flash("Invalid credentials")
 
     return render_template('login.html')
+
+# -------- LOGOUT -------- #
 
 @app.route('/logout')
 def logout():
     session.clear()
     return redirect('/login')
 
-# -------- ADMIN -------- #
+# -------- DASHBOARD -------- #
+
+@app.route('/dashboard')
+def dashboard():
+    if 'user_id' not in session:
+        return redirect('/login')
+
+    user = User.query.get(session['user_id'])
+
+    locations = []
+    for loc in Location.query.all():
+        total = Slot.query.filter_by(location_id=loc.id).count()
+        free = Slot.query.filter_by(location_id=loc.id, status="free").count()
+
+        locations.append({
+            "id": loc.id,
+            "name": loc.name,
+            "total": total,
+            "free": free
+        })
+
+    return render_template('dashboard.html', username=user.username, locations=locations)
+
+# -------- ADMIN LOGIN -------- #
+
+@app.route('/admin_login', methods=['GET', 'POST'])
+def admin_login():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+
+        if username == "admin" and password == "admin":
+            session['admin'] = True
+            return redirect('/admin')
+
+        flash("Invalid Admin Credentials")
+
+    return render_template('admin_login.html')
+
+# -------- ADMIN DASHBOARD -------- #
 
 @app.route('/admin')
 def admin():
-    if 'user_id' not in session:
-        return redirect('/login')
+    if 'admin' not in session:
+        return redirect('/admin_login')
 
     locations = []
     for loc in Location.query.all():
@@ -102,28 +164,12 @@ def admin():
 
     return render_template('admin.html', locations=locations)
 
-# -------- ADMIN LOGIN -------- #
-
-@app.route('/admin_login', methods=['GET', 'POST'])
-def admin_login():
-    if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
-
-        if username == "admin" and password == "admin":
-            session['user_id'] = 1
-            return redirect('/admin')
-
-        flash("Invalid Admin Credentials")
-
-    return render_template('admin_login.html')
-
 # -------- ADD LOCATION -------- #
 
 @app.route('/add_location', methods=['GET', 'POST'])
 def add_location():
-    if 'user_id' not in session:
-        return redirect('/login')
+    if 'admin' not in session:
+        return redirect('/admin_login')
 
     if request.method == 'POST':
         loc = Location(
@@ -140,14 +186,20 @@ def add_location():
 
 # -------- LIVE DETECTION PAGE -------- #
 
-@app.route('/admin_detect')
-def admin_detect():
+@app.route('/live')
+def live():
+    if 'admin' not in session:
+        return redirect('/admin_login')
+
     return render_template('admin_detect.html')
 
 # -------- DETECTION API -------- #
 
 @app.route('/detect_vehicle', methods=['POST'])
 def detect_vehicle():
+    if 'image' not in request.files:
+        return jsonify({"error": "No image"})
+
     file = request.files['image']
     result = detect_vehicle_api(file)
 
