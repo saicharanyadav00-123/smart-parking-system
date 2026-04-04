@@ -1,25 +1,9 @@
-from flask import Flask, render_template, request, redirect, session, flash
+from flask import Flask, render_template, request, redirect, session, flash, jsonify
 from flask_sqlalchemy import SQLAlchemy
 import qrcode
 import uuid
-import threading
-import time
 import os
-
-# -------- SAFE IMPORTS -------- #
-
-try:
-    import cv2
-    from ultralytics import YOLO
-    model = None   # disable in deployment
-except:
-    model = None
-
-try:
-    import razorpay
-    client = razorpay.Client(auth=("rzp_test_xxxxx", "xxxxxxxx"))
-except:
-    client = None
+import requests
 
 # -------- APP CONFIG -------- #
 
@@ -64,18 +48,6 @@ class VehicleLog(db.Model):
 with app.app_context():
     db.create_all()
 
-# -------- BACKGROUND TASK -------- #
-
-def ai_detection():
-    if model is None:
-        return
-    while True:
-        time.sleep(2)
-
-def start_background_thread():
-    thread = threading.Thread(target=ai_detection, daemon=True)
-    thread.start()
-
 # -------- AUTH -------- #
 
 @app.route('/')
@@ -100,19 +72,16 @@ def register():
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    try:
-        if request.method == 'POST':
-            user = User.query.filter_by(username=request.form['username']).first()
+    if request.method == 'POST':
+        user = User.query.filter_by(username=request.form['username']).first()
 
-            if user and user.password == request.form['password']:
-                session['user_id'] = user.id
-                return redirect('/dashboard')
+        if user and user.password == request.form['password']:
+            session['user_id'] = user.id
+            return redirect('/dashboard')
 
-            flash("Invalid credentials")
+        flash("Invalid credentials")
 
-        return render_template('login.html')
-    except Exception as e:
-        return f"Error: {str(e)}"
+    return render_template('login.html')
 
 @app.route('/logout')
 def logout():
@@ -175,130 +144,31 @@ def admin():
 
     return render_template('admin.html', locations=locations)
 
-# -------- ADD LOCATION -------- #
+# -------- LIVE DETECTION PAGE -------- #
 
-@app.route('/add_location', methods=['GET', 'POST'])
-def add_location():
+@app.route('/live')
+def live_page():
     if 'admin' not in session:
         return redirect('/admin_login')
+    return render_template('detect_live.html')
 
-    if request.method == 'POST':
-        loc = Location(
-            name=request.form['name'],
-            latitude=float(request.form['latitude']),
-            longitude=float(request.form['longitude'])
-        )
-        db.session.add(loc)
-        db.session.commit()
-        return redirect(f'/add_slots/{loc.id}')
+# -------- ROBOfLOW DETECTION -------- #
 
-    return render_template('add_location.html')
+@app.route('/detect_live', methods=['POST'])
+def detect_live():
+    file = request.files['image']
 
-# -------- ADD SLOTS -------- #
-
-@app.route('/add_slots/<int:location_id>', methods=['GET', 'POST'])
-def add_slots(location_id):
-    if 'admin' not in session:
-        return redirect('/admin_login')
-
-    if request.method == 'POST':
-        count = int(request.form['slots'])
-
-        for _ in range(count):
-            db.session.add(Slot(location_id=location_id))
-
-        db.session.commit()
-        return redirect('/admin')
-
-    return render_template('add_slots.html')
-
-# -------- VIEW SLOTS -------- #
-
-@app.route('/location_slots/<int:loc_id>')
-def location_slots(loc_id):
-    if 'user_id' not in session:
-        return redirect('/login')
-
-    slots = Slot.query.filter_by(location_id=loc_id).all()
-    return render_template('location_slots.html', slots=slots)
-
-# -------- QR PAYMENT -------- #
-
-@app.route('/payment_success/<int:slot_id>')
-def payment_success(slot_id):
-    if 'user_id' not in session:
-        return redirect('/login')
-
-    slot = Slot.query.get(slot_id)
-
-    if slot and slot.status == "free":
-        slot.status = "booked"
-
-        db.session.add(Booking(user_id=session['user_id'], slot_id=slot_id))
-        db.session.commit()
-
-        qr_data = f"{session['user_id']}|{slot_id}"
-        img = qrcode.make(qr_data)
-
-        filename = f"qr_{uuid.uuid4()}.png"
-        img.save(f"static/{filename}")
-
-        return render_template("qr.html", qr=filename)
-
-    return redirect('/dashboard')
-
-# -------- QR SCAN -------- #
-
-@app.route('/scan')
-def scan_page():
-    if 'admin' not in session:
-        return redirect('/admin_login')
-    return render_template('scan.html')
-
-@app.route('/scan_qr', methods=['POST'])
-def scan_qr():
     try:
-        data = request.form.get('qr_data')
-        user_id, slot_id = data.split("|")
+        response = requests.post(
+            "https://detect.roboflow.com/YOUR_MODEL/1?api_key=YOUR_API_KEY",
+            files={"file": file}
+        )
+        return jsonify(response.json())
 
-        booking = Booking.query.filter_by(
-            user_id=int(user_id),
-            slot_id=int(slot_id)
-        ).first()
-
-        if booking:
-            return render_template("scan_result.html",
-                                   status="success",
-                                   message="Valid booking")
-        else:
-            return render_template("scan_result.html",
-                                   status="error",
-                                   message="Invalid QR")
-
-    except:
-        return render_template("scan_result.html",
-                               status="error",
-                               message="QR failed")
-
-# -------- ADMIN FEATURES -------- #
-
-@app.route('/admin_detect')
-def admin_detect():
-    if 'admin' not in session:
-        return redirect('/admin_login')
-    return render_template('admin_detect.html')
-
-@app.route('/admin_logs')
-def admin_logs():
-    if 'admin' not in session:
-        return redirect('/admin_login')
-
-    logs = VehicleLog.query.order_by(VehicleLog.detected_at.desc()).all()
-    return render_template('admin_logs.html', logs=logs)
+    except Exception as e:
+        return jsonify({"error": str(e)})
 
 # -------- RUN -------- #
 
 if __name__ == "__main__":
-    start_background_thread()
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(debug=True)
