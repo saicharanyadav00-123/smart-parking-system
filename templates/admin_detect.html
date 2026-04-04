@@ -2,21 +2,61 @@
 <html>
 <head>
     <title>Live Detection</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 
-<body>
+<body style="text-align:center;">
 
-<div class="navbar">
-    <h3>Live Detection</h3>
-    <a href="/admin">Back</a>
-</div>
+<h2>🚗 Live Vehicle Detection</h2>
 
-<h2 style="text-align:center; margin-top:20px;">Live Vehicle Detection</h2>
+<video id="video" width="500" autoplay></video>
+<br><br>
+<canvas id="canvas" style="display:none;"></canvas>
 
-<div style="text-align:center; margin-top:30px;">
-    <img src="{{ url_for('video_feed') }}" width="500">
-</div>
+<h3 id="result">Waiting...</h3>
+
+<script>
+const video = document.getElementById("video");
+const canvas = document.getElementById("canvas");
+const resultText = document.getElementById("result");
+
+// open webcam
+navigator.mediaDevices.getUserMedia({ video: true })
+.then(stream => {
+    video.srcObject = stream;
+});
+
+// send frame every 3 sec
+setInterval(() => {
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(video, 0, 0);
+
+    canvas.toBlob(blob => {
+        const formData = new FormData();
+        formData.append("image", blob, "frame.jpg");
+
+        fetch("/detect_vehicle", {
+            method: "POST",
+            body: formData
+        })
+        .then(res => res.json())
+        .then(data => {
+
+            if (data.predictions && data.predictions.length > 0) {
+                resultText.innerHTML = "🚗 Vehicle Detected!";
+            } else {
+                resultText.innerHTML = "❌ No Vehicle";
+            }
+
+        });
+
+    }, "image/jpeg");
+
+}, 3000);
+</script>
 
 </body>
 </html>
