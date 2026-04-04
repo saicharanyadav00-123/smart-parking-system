@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Live Detection</title>
+    <style>
+        body {
+            background: black;
+            color: #00ffcc;
+            text-align: center;
+            font-family: Arial;
+        }
+
+        video {
+            width: 80%;
+            border: 3px solid #00ffcc;
+            border-radius: 10px;
+        }
+
+        canvas {
+            display: none;
+        }
+
+        #result {
+            margin-top: 20px;
+            font-size: 20px;
+        }
+    </style>
+</head>
+
+<body>
+
+<h2>🚗 Live Vehicle Detection</h2>
+
+<video id="video" autoplay></video>
+<canvas id="canvas"></canvas>
+
+<div id="result">Detecting...</div>
+
+<script>
+navigator.mediaDevices.getUserMedia({ video: true })
+.then(stream => {
+    document.getElementById("video").srcObject = stream;
+});
+
+setInterval(() => {
+
+    let video = document.getElementById("video");
+    let canvas = document.getElementById("canvas");
+    let ctx = canvas.getContext("2d");
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    ctx.drawImage(video, 0, 0);
+
+    canvas.toBlob(blob => {
+
+        let formData = new FormData();
+        formData.append("image", blob);
+
+        fetch("/detect_live", {
+            method: "POST",
+            body: formData
+        })
+        .then(res => res.json())
+        .then(data => {
+
+            if (data.predictions && data.predictions.length > 0) {
+                document.getElementById("result").innerHTML =
+                    "🚗 Vehicle Detected (" + data.predictions.length + ")";
+            } else {
+                document.getElementById("result").innerHTML =
+                    "❌ No Vehicle";
+            }
+
+        });
+
+    }, "image/jpeg");
+
+}, 2000); // every 2 seconds
+
+</script>
+
+</body>
+</html>
