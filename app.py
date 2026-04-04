@@ -2,10 +2,10 @@ from flask import Flask, render_template, request, redirect, session, flash, jso
 from flask_sqlalchemy import SQLAlchemy
 import qrcode
 import uuid
-import os
 import requests
+import os
 
-# -------- APP CONFIG -------- #
+# -------- APP -------- #
 
 app = Flask(__name__)
 app.secret_key = "secret123"
@@ -14,6 +14,12 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
+
+# -------- ROBOFLOW CONFIG -------- #
+
+API_KEY = "d8207anxlLptFHy3mCSm"
+WORKSPACE = "sais-workspace-5kbq6"
+WORKFLOW = "find-car-motorcycle-vehicles"
 
 # -------- DATABASE -------- #
 
@@ -47,6 +53,18 @@ class VehicleLog(db.Model):
 
 with app.app_context():
     db.create_all()
+
+# -------- ROBOFLOW DETECTION FUNCTION -------- #
+
+def detect_vehicle(image_file):
+    url = f"https://detect.roboflow.com/{WORKSPACE}/{WORKFLOW}?api_key={API_KEY}"
+
+    response = requests.post(
+        url,
+        files={"file": image_file}
+    )
+
+    return response.json()
 
 # -------- AUTH -------- #
 
@@ -144,31 +162,54 @@ def admin():
 
     return render_template('admin.html', locations=locations)
 
-# -------- LIVE DETECTION PAGE -------- #
+# -------- DETECTION ROUTE -------- #
 
-@app.route('/live')
-def live_page():
-    if 'admin' not in session:
-        return redirect('/admin_login')
-    return render_template('detect_live.html')
+@app.route('/detect_vehicle', methods=['POST'])
+def detect_vehicle_route():
+    if 'image' not in request.files:
+        return jsonify({"error": "No image uploaded"})
 
-# -------- ROBOfLOW DETECTION -------- #
-
-@app.route('/detect_live', methods=['POST'])
-def detect_live():
     file = request.files['image']
 
-    try:
-        response = requests.post(
-            "https://detect.roboflow.com/YOUR_MODEL/1?api_key=YOUR_API_KEY",
-            files={"file": file}
-        )
-        return jsonify(response.json())
+    result = detect_vehicle(file)
 
-    except Exception as e:
-        return jsonify({"error": str(e)})
+    # check if vehicles detected
+    predictions = result.get("predictions", [])
+
+    if len(predictions) > 0:
+        free_slot = Slot.query.filter_by(status="free").first()
+
+        if free_slot:
+            free_slot.status = "booked"
+            db.session.add(VehicleLog(slot_id=free_slot.id))
+            db.session.commit()
+
+    return jsonify(result)
+
+# -------- ADMIN PAGES -------- #
+
+@app.route('/admin_detect')
+def admin_detect():
+    if 'admin' not in session:
+        return redirect('/admin_login')
+    return render_template('admin_detect.html')
+
+@app.route('/admin_logs')
+def admin_logs():
+    if 'admin' not in session:
+        return redirect('/admin_login')
+
+    logs = VehicleLog.query.order_by(VehicleLog.detected_at.desc()).all()
+    return render_template('admin_logs.html', logs=logs)
+
+@app.route('/scan')
+def scan_page():
+    if 'admin' not in session:
+        return redirect('/admin_login')
+    return render_template('scan.html')
 
 # -------- RUN -------- #
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
