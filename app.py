@@ -2,7 +2,6 @@ from flask import Flask, render_template, request, redirect, session, flash, jso
 from flask_sqlalchemy import SQLAlchemy
 import requests
 import os
-import base64
 import qrcode
 import uuid
 
@@ -14,11 +13,12 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 
-# -------- ROBOFLOW CONFIG -------- #
+# -------- ROBOFLOW CONFIG (FIXED) -------- #
 
-API_KEY = "YOUR_API_KEY"
-WORKSPACE = "sais-workspace-5kbq6"
-WORKFLOW = "find-car-motorcycle-vehicles"
+API_KEY = "d8207anxlLptFHy3mCSm"
+
+# ✅ IMPORTANT: Use MODEL (not workflow)
+MODEL = "car-motorcycle-vehicles/1"
 
 # -------- DATABASE -------- #
 
@@ -51,27 +51,26 @@ class VehicleLog(db.Model):
 with app.app_context():
     db.create_all()
 
-# -------- ROBOFLOW DETECTION -------- #
+# -------- ROBOFLOW DETECTION (FIXED) -------- #
 
 def detect_vehicle_api(image_file):
-    url = "https://detect.roboflow.com/infer/workflows"
+    try:
+        url = f"https://detect.roboflow.com/{MODEL}?api_key={API_KEY}"
 
-    image_bytes = image_file.read()
-    image_base64 = base64.b64encode(image_bytes).decode("utf-8")
+        response = requests.post(
+            url,
+            files={"file": image_file}
+        )
 
-    response = requests.post(
-        url,
-        params={"api_key": API_KEY},
-        json={
-            "workspace_name": WORKSPACE,
-            "workflow_id": WORKFLOW,
-            "inputs": {
-                "image": image_base64
-            }
-        }
-    )
+        result = response.json()
 
-    return response.json()
+        print("ROBOFLOW RESPONSE:", result)  # DEBUG
+
+        return result
+
+    except Exception as e:
+        print("ERROR:", str(e))
+        return {"predictions": []}
 
 # -------- HOME -------- #
 
@@ -121,7 +120,7 @@ def logout():
     session.clear()
     return redirect('/login')
 
-# -------- USER DASHBOARD -------- #
+# -------- DASHBOARD -------- #
 
 @app.route('/dashboard')
 def dashboard():
@@ -185,15 +184,19 @@ def add_location():
         return redirect('/admin_login')
 
     if request.method == 'POST':
-        loc = Location(
-            name=request.form['name'],
-            latitude=float(request.form['latitude']),
-            longitude=float(request.form['longitude'])
-        )
-        db.session.add(loc)
-        db.session.commit()
+        try:
+            loc = Location(
+                name=request.form['name'],
+                latitude=float(request.form['latitude']),
+                longitude=float(request.form['longitude'])
+            )
+            db.session.add(loc)
+            db.session.commit()
 
-        return redirect('/admin')
+            return redirect('/admin')
+
+        except Exception as e:
+            return f"ERROR: {str(e)}"
 
     return render_template('add_location.html')
 
@@ -206,31 +209,34 @@ def live():
 
     return render_template('admin_detect.html')
 
-# -------- DETECT VEHICLE -------- #
+# -------- DETECTION ROUTE (FIXED) -------- #
 
 @app.route('/detect_vehicle', methods=['POST'])
 def detect_vehicle():
-    if 'image' not in request.files:
-        return "No image uploaded"
+    try:
+        if 'image' not in request.files:
+            return "No image uploaded"
 
-    file = request.files['image']
-    result = detect_vehicle_api(file)
+        file = request.files['image']
 
-    print("DEBUG:", result)
+        result = detect_vehicle_api(file)
 
-    predictions = []
-    if "outputs" in result:
-        predictions = result["outputs"][0].get("predictions", [])
+        print("RESULT:", result)  # DEBUG
 
-    if len(predictions) > 0:
-        slot = Slot.query.filter_by(status="free").first()
+        predictions = result.get("predictions", [])
 
-        if slot:
-            slot.status = "booked"
-            db.session.add(VehicleLog(slot_id=slot.id))
-            db.session.commit()
+        if len(predictions) > 0:
+            slot = Slot.query.filter_by(status="free").first()
 
-    return render_template("admin_detect.html", result=result)
+            if slot:
+                slot.status = "booked"
+                db.session.add(VehicleLog(slot_id=slot.id))
+                db.session.commit()
+
+        return render_template("admin_detect.html", result=result)
+
+    except Exception as e:
+        return f"ERROR OCCURRED: {str(e)}"
 
 # -------- ADMIN LOGS -------- #
 
@@ -242,7 +248,7 @@ def admin_logs():
     logs = VehicleLog.query.order_by(VehicleLog.detected_at.desc()).all()
     return render_template('admin_logs.html', logs=logs)
 
-# -------- SCAN PAGE -------- #
+# -------- SCAN -------- #
 
 @app.route('/scan')
 def scan():
@@ -251,13 +257,10 @@ def scan():
 
     return render_template('scan.html')
 
-# -------- SCAN QR -------- #
-
 @app.route('/scan_qr', methods=['POST'])
 def scan_qr():
-    data = request.form.get('qr_data')
-
     try:
+        data = request.form.get('qr_data')
         user_id, slot_id = data.split("|")
 
         booking = Booking.query.filter_by(
