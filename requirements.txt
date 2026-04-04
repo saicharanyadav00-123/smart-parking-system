@@ -3,6 +3,5 @@ flask_sqlalchemy
 qrcode
 opencv-python-headless
 razorpay
-ultralytics
 gunicorn
 requests
